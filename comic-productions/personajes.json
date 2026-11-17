@@ -1,0 +1,12 @@
+
+{
+  "version": "1.0",
+  "personajes": {},
+  "instrucciones": {
+    "guardar_personajes_nuevos": true,
+    "mantener_diseno_original": true,
+    "permitir_cambios_de_vestuario": true,
+    "registrar_versiones": true,
+    "no_reinventar_personajes_existentes": true
+  }
+}

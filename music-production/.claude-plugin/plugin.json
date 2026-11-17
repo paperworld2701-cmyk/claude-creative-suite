@@ -1,0 +1,9 @@
+{
+  "name": "music-production",
+  "version": "1.0.0",
+  "description": "Crea música original con Web Audio API en un estudio HTML autocontenido.",
+  "author": {
+    "name": "Custom"
+  },
+  "license": "MIT"
+}

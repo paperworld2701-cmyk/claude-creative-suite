@@ -1,0 +1,48 @@
+
+{
+  "version": "1.0",
+  "formato": {
+    "orientacion": "vertical",
+    "proporcion": "2:3",
+    "margenes": "definidos",
+    "bordes": "negros",
+    "separacion_viñetas": "uniforme"
+  },
+  "estilo": {
+    "tipo": "comic_superheroes",
+    "entintado": "definido",
+    "anatomia": "estilizada_realista",
+    "perspectiva": "cinematografica",
+    "fondos": "detallados",
+    "expresiones": "muy_expresivas"
+  },
+  "colores": {
+    "paleta": "completa",
+    "saturacion": "media_alta",
+    "contraste": "alto",
+    "sombras": "marcadas"
+  },
+  "iluminacion": {
+    "tipo": "cinematografica",
+    "volumetrica": true,
+    "contraluz": true,
+    "reflejos": true
+  },
+  "efectos": {
+    "poderes": true,
+    "particulas": true,
+    "movimiento": true,
+    "impactos": true
+  },
+  "globos": {
+    "dialogos": "blancos",
+    "pensamientos": "nubes",
+    "gritos": "dentados",
+    "evitar_rostros": true
+  },
+  "consistencia": {
+    "mantener_estilo_entre_paginas": true,
+    "mantener_paleta": true,
+    "mantener_anatomia": true
+  }
+}

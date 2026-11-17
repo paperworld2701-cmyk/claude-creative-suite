@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Music Production Studio</title>
+<style>
+:root{color-scheme:dark;--bg:#10131c;--panel:#1a2030;--line:#303a50;--text:#edf2ff;--muted:#aab5ca;--accent:#8b9cff}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at top,#222b43,var(--bg) 55%);color:var(--text);font:15px system-ui,sans-serif}
+main{max-width:900px;margin:32px auto;padding:20px}.head{margin-bottom:20px}.head p{color:var(--muted)}
+h1{margin:0;font-size:clamp(28px,5vw,42px)}.panel{background:#1a2030eF;border:1px solid var(--line);border-radius:18px;padding:20px;margin:14px 0;box-shadow:0 12px 36px #0003}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:18px}
+label{display:block;font-weight:650;margin-bottom:8px}select,input[type=number]{width:100%;background:#101625;color:var(--text);border:1px solid var(--line);border-radius:10px;padding:11px}
+input[type=range]{width:100%;accent-color:var(--accent)}.value{color:#c4ceff;font-variant-numeric:tabular-nums}
+.buttons{display:flex;flex-wrap:wrap;gap:10px;margin-top:16px}
+button{border:0;border-radius:11px;padding:11px 16px;background:#344064;color:white;font-weight:700;cursor:pointer}
+button.primary{background:#6679ed}button:disabled{opacity:.45;cursor:not-allowed}
+.status{padding:12px;border-radius:10px;background:#111827;color:#c7d2e8;min-height:44px}
+small{color:var(--muted)}.meter{height:7px;background:#303a50;border-radius:9px;overflow:hidden;margin-top:14px}.meter span{display:block;height:100%;width:0;background:var(--accent);transition:width .2s}
+footer{color:var(--muted);font-size:12px;text-align:center;margin:20px}
+</style>
+</head>
+<body>
+<main>
+ <header class="head"><h1>Music Production</h1><p>Estudio musical original · Web Audio API · Sin muestras ni dependencias externas</p></header>
+ <section class="panel">
+  <div class="grid">
+   <div><label for="preset">Estilo</label><select id="preset">
+    <option value="tense">DOCUMENTAL TENSO</option><option value="hero">HEROICO / CÓMIC</option>
+    <option value="mystery">SUSPENSO / MISTERIO</option><option value="lofi">LO-FI / FONDO</option>
+   </select></div>
+   <div><label for="bpm">BPM / Velocidad <span class="value" id="bpmVal">82</span></label><input id="bpm" type="range" min="50" max="180" value="82"></div>
+   <div><label for="filter">Filtro grave ↔ agudo <span class="value" id="filterVal">1800 Hz</span></label><input id="filter" type="range" min="120" max="10000" value="1800"></div>
+   <div><label for="volume">Volumen <span class="value" id="volumeVal">65%</span></label><input id="volume" type="range" min="0" max="100" value="65"></div>
+   <div><label for="duration">Duración de exportación (segundos)</label><input id="duration" type="number" min="1" max="600" step="1" value="30"></div>
+  </div>
+  <div class="buttons"><button class="primary" id="play">▶ Reproducir</button><button id="pause">Ⅱ Pausar</button><button id="stop">■ Detener</button><button id="loop" aria-pressed="true">↻ Loop: activado</button></div>
+ </section>
+ <section class="panel">
+  <h2>Exportar audio</h2>
+  <p><small>WAV funciona sin MediaRecorder. WEBM/OGG depende del soporte del navegador.</small></p>
+  <div class="buttons"><button class="primary" id="wav">Descargar WAV</button><button id="compressed">Grabar WEBM / OGG</button></div>
+  <div class="meter"><span id="progress"></span></div>
+ </section>
+ <section class="panel"><div class="status" id="status" role="status">Listo. Pulsa Reproducir para escuchar.</div><p><small id="details">DOCUMENTAL TENSO · La menor · Am – F – Dm – E</small></p></section>
+ <footer>Composición sintetizada localmente. No se envía audio a ningún servidor.</footer>
+</main>
+<script>
+(() => {
+'use strict';
+const $ = id => document.getElementById(id);
+const presets = {
+ tense:{name:'DOCUMENTAL TENSO',bpm:82,root:45,chords:[[0,3,7],[8,0,3],[5,8,0],[4,8,11]],scale:[0,2,3,5,7,8,11],wave:'triangle',bass:0.23,beat:'sparse',desc:'La menor · Am – F – Dm – E'},
+ hero:{name:'HEROICO / CÓMIC',bpm:118,root:48,chords:[[0,4,7],[5,9,0],[7,11,2],[0,4,7]],scale:[0,2,4,5,7,9,11],wave:'sawtooth',bass:0.3,beat:'strong',desc:'Do mayor · C – F – G – C'},
+ mystery:{name:'SUSPENSO / MISTERIO',bpm:76,root:50,chords:[[0,3,7],[2,5,9],[5,8,0],[1,5,8]],scale:[0,2,3,5,7,9,10],wave:'sine',bass:0.19,beat:'minimal',desc:'Re menor · Dm – Em – Gm – C#dim'},
+ lofi:{name:'LO-FI / FONDO',bpm:86,root:45,chords:[[0,3,7,10],[5,9,0,4],[2,5,9,0],[7,10,2,5]],scale:[0,2,3,5,7,9,10],wave:'triangle',bass:0.26,beat:'lofi',desc:'La menor séptima · Am7 – Fmaj7 – Dm7 – G7'}
+};
+let preset=presets.tense, ctx=null, master=null, filterNode=null, liveBus=null, scheduler=null, nextTime=0, step=0, playing=false, paused=false, looping=true, exportBusy=false;
+const status = t => $('status').textContent=t;
+const midiHz = n => 440*Math.pow(2,(n-69)/12);
+function setupGraph(c) {
+ const f=c.createBiquadFilter(); f.type='lowpass'; f.frequency.value=+$('filter').value; f.Q.value=.65;
+ const g=c.createGain(); g.gain.value=+$('volume').value/100;
+ f.connect(g); g.connect(c.destination);
+ return {filter:f,master:g};
+}
+async function ensureAudio(){
+ if(!ctx){ctx=new AudioContext();const graph=setupGraph(ctx);filterNode=graph.filter;master=graph.master;}
+ if(ctx.state!=='running') await ctx.resume();
+}
+function envGain(node,t,peak,dur){
+ node.gain.setValueAtTime(.0001,t);node.gain.exponentialRampToValueAtTime(Math.max(.0002,peak),t+.012);node.gain.exponentialRampToValueAtTime(.0001,t+dur);
+}
+function tone(c,dest,freq,t,dur,wave,vol,cutoff){
+ const o=c.createOscillator(),g=c.createGain(),flt=c.createBiquadFilter();
+ o.type=wave;o.frequency.setValueAtTime(freq,t);flt.type='lowpass';flt.frequency.value=cutoff||5000;
+ o.connect(flt);flt.connect(g);g.connect(dest);envGain(g,t,vol,dur);o.start(t);o.stop(t+dur+.03);
+}
+function noiseHit(c,dest,t,dur,vol,highpass=1000){
+ const frames=Math.max(1,Math.floor(c.sampleRate*dur)),buf=c.createBuffer(1,frames,c.sampleRate),data=buf.getChannelData(0);
+ for(let i=0;i<frames;i++)data[i]=(Math.random()*2-1)*(1-i/frames);
+ const src=c.createBufferSource(),flt=c.createBiquadFilter(),g=c.createGain();
+ src.buffer=buf;flt.type='highpass';flt.frequency.value=highpass;src.connect(flt);flt.connect(g);g.connect(dest);envGain(g,t,vol,dur);src.start(t);src.stop(t+dur);
+}
+function scheduleStep(c,dest,st,t,bpm,pr){
+ const beat=60/bpm,bar=Math.floor(st/16),pos=st%16,ch=pr.chords[bar%pr.chords.length],base=pr.root;
+ if(pos===0){
+  ch.forEach((interval,i)=>tone(c,dest,midiHz(base+interval+ (i===0?0:12)),t,beat*3.7,pr.wave,.045/(i+1),2600));
+  tone(c,dest,midiHz(base-12),t,beat*1.8,'sine',pr.bass,450);
+ }
+ if(pos%4===0 && pr.beat!=='minimal') tone(c,dest,midiHz(base-24),t,.16,'sine',pr.beat==='strong'?.24:.14,180);
+ if(pr.beat==='strong' && (pos===4||pos===12)) noiseHit(c,dest,t,.13,.10,1800);
+ if(pr.beat==='lofi' && (pos===4||pos===12)) noiseHit(c,dest,t,.11,.055,2200);
+ if(pr.beat==='sparse' && pos===8) noiseHit(c,dest,t,.16,.045,3500);
+ if(pos%2===0 && (pr.beat==='lofi'||pr.beat==='strong')){
+  const n=pr.scale[(Math.floor(st/2)+bar)%pr.scale.length];
+  tone(c,dest,midiHz(base+12+n+12),t,.16,pr.wave,.027,4000);
+ }
+ if(pr.beat==='lofi' && pos%4===2) noiseHit(c,dest,t,.045,.018,6500);
+ if(pr.beat==='minimal' && pos===10) tone(c,dest,midiHz(base+12+pr.scale[(bar+2)%pr.scale.length]),t,beat*1.2,'sine',.04,2200);
+}
+function tick(){
+ if(!playing||!ctx)return;
+ const bpm=+$('bpm').value, stepDur=60/bpm/4;
+ while(nextTime<ctx.currentTime+.12){
+  scheduleStep(ctx,master,step,nextTime,bpm,preset);
+  step++;nextTime+=stepDur;
+  if(step>=64){if(looping)step=0;else {step=0;}}
+ }
+}
+function startScheduler(){if(scheduler)clearInterval(scheduler);scheduler=setInterval(tick,25);}
+async function play(){
+ try{await ensureAudio();if(playing)return;playing=true;paused=false;nextTime=ctx.currentTime+.06;startScheduler();status('Reproduciendo · '+preset.name);}
+ catch(e){status('No se pudo iniciar el audio: '+e.message);}
+}
+function pause(){if(!playing)return;playing=false;paused=true;if(scheduler)clearInterval(scheduler);status('Pausado.');}
+function stop(){playing=false;paused=false;step=0;if(scheduler)clearInterval(scheduler);if(master&&ctx)master.gain.setTargetAtTime(+$('volume').value/100,ctx.currentTime,.02);status('Detenido.');}
+function updatePreset(){
+ preset=presets[$('preset').value];$('bpm').value=preset.bpm;syncControls();$('details').textContent=preset.desc;
+ if(playing){step=0;nextTime=ctx.currentTime+.04;}status('Preset seleccionado: '+preset.name+'. Pulsa Reproducir.');
+}
+function syncControls(){
+ $('bpmVal').textContent=$('bpm').value;$('filterVal').textContent=$('filter').value+' Hz';$('volumeVal').textContent=$('volume').value+'%';
+ if(ctx&&filterNode)filterNode.frequency.setTargetAtTime(+$('filter').value,ctx.currentTime,.025);
+ if(ctx&&master)master.gain.setTargetAtTime(+$('volume').value/100,ctx.currentTime,.025);
+}
+function makeWav(buffer){
+ const channels=buffer.numberOfChannels,frames=buffer.length,rate=buffer.sampleRate,bits=16,bytes=bits/8;
+ const out=new ArrayBuffer(44+frames*channels*bytes),v=new DataView(out);
+ const str=(o,s)=>{for(let i=0;i<s.length;i++)v.setUint8(o+i,s.charCodeAt(i));};
+ str(0,'RIFF');v.setUint32(4,36+frames*channels*bytes,true);str(8,'WAVE');str(12,'fmt ');
+ v.setUint32(16,16,true);v.setUint16(20,1,true);v.setUint16(22,channels,true);v.setUint32(24,rate,true);
+ v.setUint32(28,rate*channels*bytes,true);v.setUint16(32,channels*bytes,true);v.setUint16(34,bits,true);str(36,'data');v.setUint32(40,frames*channels*bytes,true);
+ let offset=44;
+ for(let i=0;i<frames;i++)for(let ch=0;ch<channels;ch++){
+  let s=Math.max(-1,Math.min(1,buffer.getChannelData(ch)[i]));
+  v.setInt16(offset,s<0?s*32768:s*32767,true);offset+=2;
+ }
+ return new Blob([out],{type:'audio/wav'});
+}
+function makeOfflineGraph(c){
+ const f=c.createBiquadFilter();f.type='lowpass';f.frequency.value=+$('filter').value;f.Q.value=.65;
+ const g=c.createGain();g.gain.value=+$('volume').value/100;f.connect(g);g.connect(c.destination);return g;
+}
+async function renderWav(seconds){
+ const rate=44100,frames=Math.round(seconds*rate),offline=new OfflineAudioContext(2,frames,rate),dest=makeOfflineGraph(offline);
+ const bpm=+$('bpm').value,stepDur=60/bpm/4,totalSteps=Math.ceil(seconds/stepDur);
+ for(let s=0;s<totalSteps;s++)scheduleStep(offline,dest,s,s*stepDur,bpm,preset);
+ const rendered=await offline.startRendering();return makeWav(rendered);
+}
+function download(blob,name){const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1500);}
+function durationValue(){const n=Number($('duration').value);if(!Number.isFinite(n)||n<1||n>600||!Number.isInteger(n))throw new Error('La duración debe ser un número entero entre 1 y 600 segundos.');return n;}
+async function exportWav(){
+ if(exportBusy)return;let sec;try{sec=durationValue();}catch(e){status(e.message);return;}
+ exportBusy=true;toggleExport(true);status('Renderizando WAV de '+sec+' segundos…');$('progress').style.width='15%';
+ try{const blob=await renderWav(sec);$('progress').style.width='100%';download(blob,'music-production-'+$('preset').value+'-'+sec+'s.wav');status('WAV exportado · '+sec+' segundos exactos · PCM 16-bit.');}
+ catch(e){status('Error al exportar WAV: '+e.message);}
+ finally{exportBusy=false;toggleExport(false);setTimeout(()=>$('progress').style.width='0',1200);}
+}
+function toggleExport(disabled){$('wav').disabled=disabled;$('compressed').disabled=disabled;$('play').disabled=disabled;}
+async function exportCompressed(){
+ if(exportBusy)return;let sec;try{sec=durationValue();}catch(e){status(e.message);return;}
+ const types=['audio/webm;codecs=opus','audio/ogg;codecs=opus','audio/webm','audio/ogg'];
+ const mime=types.find(t=>window.MediaRecorder&&MediaRecorder.isTypeSupported(t));
+ if(!mime){status('Este navegador no admite grabación WEBM/OGG. Usa Descargar WAV.');return;}
+ exportBusy=true;toggleExport(true);
+ let localCtx,stream,dest,recorder,timer;
+ try{
+  localCtx=new AudioContext();const graph=setupGraph(localCtx);dest=localCtx.createMediaStreamDestination();graph.master.connect(dest);
+  await localCtx.resume();
+  const chunks=[];recorder=new MediaRecorder(dest.stream,{mimeType:mime});
+  recorder.ondataavailable=e=>{if(e.data&&e.data.size)chunks.push(e.data);};
+  const stopped=new Promise((resolve,reject)=>{recorder.onstop=resolve;recorder.onerror=()=>reject(new Error('Falló MediaRecorder.'));});
+  recorder.start();const bpm=+$('bpm').value,stepDur=60/bpm/4,totalSteps=Math.ceil(sec/stepDur);let s=0;
+  const run=()=>{const end=localCtx.currentTime+.1;while(s<totalSteps&&s*stepDur<sec&&s*stepDur<end){scheduleStep(localCtx,graph.master,s,s*stepDur,bpm,preset);s++;}};
+  run();const schedulerId=setInterval(run,20);
+  await new Promise(resolve=>{timer=setTimeout(resolve,sec*1000);});
+  clearInterval(schedulerId);recorder.stop();await stopped;dest.stream.getTracks().forEach(t=>t.stop());await localCtx.close();
+  const ext=mime.includes('ogg')?'ogg':'webm';download(new Blob(chunks,{type:mime}),'music-production-'+$('preset').value+'-'+sec+'s.'+ext);
+  status(ext.toUpperCase()+' exportado · '+sec+' segundos.');
+ }catch(e){if(recorder&&recorder.state!=='inactive')recorder.stop();if(dest)dest.stream.getTracks().forEach(t=>t.stop());if(localCtx&&localCtx.state!=='closed')await localCtx.close();status('No se pudo grabar: '+e.message+'. Prueba WAV.');}
+ finally{clearTimeout(timer);exportBusy=false;toggleExport(false);}
+}
+$('preset').addEventListener('change',updatePreset);
+['bpm','filter','volume'].forEach(id=>$(id).addEventListener('input',syncControls));
+$('play').addEventListener('click',play);$('pause').addEventListener('click',pause);$('stop').addEventListener('click',stop);
+$('loop').addEventListener('click',()=>{looping=!looping;$('loop').textContent='↻ Loop: '+(looping?'activado':'desactivado');$('loop').setAttribute('aria-pressed',String(looping));});
+$('wav').addEventListener('click',exportWav);$('compressed').addEventListener('click',exportCompressed);
+syncControls();
+})();
+</script>
+</body>
+</html>
