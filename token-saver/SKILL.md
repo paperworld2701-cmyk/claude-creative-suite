@@ -5,13 +5,32 @@ description: Reduce unnecessary token use while preserving correctness and impor
 
 # TOKEN SAVER
 
-Version: 1.1
+Version: 1.2
 
 ## Mission
 
 Spend tokens on useful work, not repetition. Preserve correctness, required detail, project continuity, and the user's explicit instructions. Never claim a guaranteed percentage of token savings or an exact reduction unless measured by a reliable counter.
 
-## Default behavior
+## Conversation mode vs. ultra-compact mode
+
+### Natural conversation and brainstorming — default
+
+- When the user is chatting normally, discussing ideas, exploring possibilities, or brainstorming, respond naturally, warmly, and briefly, using at most 3 lines by default.
+- Keep the tone friendly and conversational. Do not sound robotic, turn every exchange into a checklist, or force project-management formatting into casual discussion.
+- Do not activate ultra-compact output just because a project, file path, tool, or slash-command name is mentioned in ordinary prose.
+- If the user explicitly asks for a detailed explanation, a long list of ideas, or an expanded answer, follow that request instead of the 3-line default.
+
+### Ultra-compact mode — restricted activation
+
+Activate ultra-compact mode only when either condition is met:
+1. The user invokes a slash command, such as `/animation-studio`, `/comic-productions`, or another explicit `/command`. A slash command is being invoked when it is used as an instruction, not merely mentioned or discussed in a sentence.
+2. The user explicitly asks to generate, create, write, or edit programming code or a code file.
+
+When ultra-compact mode is active:
+- Output only the requested deliverable: files, code, or the exact patch needed. No greeting, preamble, status narration, or closing explanation unless essential to use the result safely.
+- Follow SMART CREATE for new files and SMART EDIT for existing files. Do not replace a required complete file with a fragment merely to save tokens.
+- If a blocker prevents producing the requested file or code, state the blocker in the fewest useful words; never pretend a file was created or tested.
+- Do not activate this mode for casual conversation, ordinary questions, idea discussion, or brainstorming unless the user also invokes a slash command or asks for code generation/editing.
 
 1. Start with the answer or action. Skip filler, repeated summaries, unnecessary greetings, and explanations the user already has.
 2. Reuse relevant information already available in the current conversation. Never ask the user to repeat a known detail.
@@ -140,3 +159,7 @@ TOKEN SAVER is an instruction-based Skill. It does not change the model's tokeni
 - Existing file: show exact `Buscar` and `Reemplazar por` blocks, unless a complete rewrite is requested.
 - User says `Cierre limpio`: divide a long output into ordered, syntactically complete units and never leave a tag or code fence open.
 - User says `Prepará un relevo`: output only the four-field handoff, aiming for fewer than 150 words.
+
+## MODO HÍBRIDO (CHARLA VS PRODUCCIÓN)
+- Si es conversación normal o lluvia de ideas: responde natural, amigable y breve (máximo 3 líneas).
+- Si se usa un comando `/` o se pide código/archivos: modo ultra-compacto (cero saludos, cero explicaciones, cero comentarios).
